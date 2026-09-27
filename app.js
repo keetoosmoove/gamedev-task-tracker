@@ -1,5 +1,8 @@
-// Tasks are stored in localStorage for now (no backend yet).
-const STORAGE_KEY = "gamedev-tasks";
+// Tasks are stored in the Supabase "tasks" table (no authentication yet).
+const SUPABASE_URL = "https://cthtlwrglchifjwwirhs.supabase.co";
+const SUPABASE_KEY = "sb_publishable_425-6JtVLwIfBYMd7osCKw_v3Gx3_pi";
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const form = document.getElementById("task-form");
 const formTitle = document.getElementById("form-title");
@@ -14,18 +17,27 @@ const filterSelect = document.getElementById("filter");
 const taskList = document.getElementById("task-list");
 const emptyMessage = document.getElementById("empty-message");
 
-let tasks = loadTasks();
+let tasks = [];
 
-function loadTasks() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-  } catch {
-    return [];
+async function loadTasks() {
+  emptyMessage.textContent = "Loading tasks...";
+  emptyMessage.classList.remove("hidden");
+
+  const { data, error } = await db
+    .from("tasks")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error(error);
+    tasks = [];
+    emptyMessage.textContent = "Could not load tasks: " + error.message;
+    taskList.innerHTML = "";
+    return;
   }
-}
 
-function saveTasks() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+  tasks = data;
+  renderTasks();
 }
 
 function statusClass(status) {
@@ -41,14 +53,14 @@ function formatDate(dateStr) {
 }
 
 function isOverdue(task) {
-  if (!task.dueDate || task.status === "Done") return false;
+  if (!task.due_date || task.status === "Done") return false;
   const now = new Date();
   const today = [
     now.getFullYear(),
     String(now.getMonth() + 1).padStart(2, "0"),
     String(now.getDate()).padStart(2, "0"),
   ].join("-");
-  return task.dueDate < today;
+  return task.due_date < today;
 }
 
 function renderTasks() {
@@ -84,7 +96,7 @@ function renderTasks() {
 
     const meta = document.createElement("div");
     meta.className = "task-meta" + (isOverdue(task) ? " overdue" : "");
-    meta.textContent = "Due: " + formatDate(task.dueDate) + (isOverdue(task) ? " (overdue)" : "");
+    meta.textContent = "Due: " + formatDate(task.due_date) + (isOverdue(task) ? " (overdue)" : "");
     li.append(meta);
 
     const buttons = document.createElement("div");
@@ -120,8 +132,8 @@ function startEdit(id) {
 
   idInput.value = task.id;
   titleInput.value = task.title;
-  descInput.value = task.description;
-  dueInput.value = task.dueDate;
+  descInput.value = task.description || "";
+  dueInput.value = task.due_date || "";
   statusInput.value = task.status;
 
   formTitle.textContent = "Edit Task";
@@ -131,17 +143,23 @@ function startEdit(id) {
   form.scrollIntoView({ behavior: "smooth" });
 }
 
-function deleteTask(id) {
+async function deleteTask(id) {
   const task = tasks.find((t) => t.id === id);
   if (!task || !confirm(`Delete "${task.title}"?`)) return;
 
+  const { error } = await db.from("tasks").delete().eq("id", id);
+  if (error) {
+    console.error(error);
+    alert("Could not delete task: " + error.message);
+    return;
+  }
+
   tasks = tasks.filter((t) => t.id !== id);
-  if (idInput.value === id) resetForm();
-  saveTasks();
+  if (idInput.value === String(id)) resetForm();
   renderTasks();
 }
 
-form.addEventListener("submit", (e) => {
+form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   const title = titleInput.value.trim();
@@ -153,18 +171,32 @@ form.addEventListener("submit", (e) => {
   const data = {
     title,
     description: descInput.value.trim(),
-    dueDate: dueInput.value,
+    due_date: dueInput.value || null,
     status: statusInput.value,
   };
 
+  submitBtn.disabled = true;
+
   const editingId = idInput.value;
-  if (editingId) {
-    tasks = tasks.map((t) => (t.id === editingId ? { ...t, ...data } : t));
-  } else {
-    tasks.push({ id: Date.now().toString(), ...data });
+  const editingTask = editingId && tasks.find((t) => String(t.id) === editingId);
+  const { data: saved, error } = editingTask
+    ? await db.from("tasks").update(data).eq("id", editingTask.id).select().single()
+    : await db.from("tasks").insert(data).select().single();
+
+  submitBtn.disabled = false;
+
+  if (error) {
+    console.error(error);
+    alert("Could not save task: " + error.message);
+    return;
   }
 
-  saveTasks();
+  if (editingTask) {
+    tasks = tasks.map((t) => (t.id === saved.id ? saved : t));
+  } else {
+    tasks.push(saved);
+  }
+
   resetForm();
   renderTasks();
 });
@@ -172,4 +204,4 @@ form.addEventListener("submit", (e) => {
 cancelBtn.addEventListener("click", resetForm);
 filterSelect.addEventListener("change", renderTasks);
 
-renderTasks();
+loadTasks();
