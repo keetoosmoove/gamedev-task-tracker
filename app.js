@@ -1,4 +1,5 @@
-// Tasks are stored in the Supabase "tasks" table (no authentication yet).
+// Tasks are stored in the Supabase "tasks" table. Users sign in with Supabase Auth
+// (email + password) before the task manager is shown.
 const SUPABASE_URL = "https://cthtlwrglchifjwwirhs.supabase.co";
 const SUPABASE_KEY = "sb_publishable_425-6JtVLwIfBYMd7osCKw_v3Gx3_pi";
 
@@ -17,7 +18,23 @@ const filterSelect = document.getElementById("filter");
 const taskList = document.getElementById("task-list");
 const emptyMessage = document.getElementById("empty-message");
 
+const authSection = document.getElementById("auth-section");
+const authForm = document.getElementById("auth-form");
+const authTitle = document.getElementById("auth-title");
+const authEmail = document.getElementById("auth-email");
+const authPassword = document.getElementById("auth-password");
+const authSubmit = document.getElementById("auth-submit");
+const authMessage = document.getElementById("auth-message");
+const authSwitchText = document.getElementById("auth-switch-text");
+const authSwitchBtn = document.getElementById("auth-switch-btn");
+const appSection = document.getElementById("app-section");
+const userBar = document.getElementById("user-bar");
+const userEmail = document.getElementById("user-email");
+const logoutBtn = document.getElementById("logout-btn");
+
 let tasks = [];
+let authMode = "login"; // "login" or "register"
+let currentUserId = null;
 
 async function loadTasks() {
   emptyMessage.textContent = "Loading tasks...";
@@ -204,4 +221,106 @@ form.addEventListener("submit", async (e) => {
 cancelBtn.addEventListener("click", resetForm);
 filterSelect.addEventListener("change", renderTasks);
 
-loadTasks();
+// ---------- Authentication ----------
+
+function showAuthMessage(text, isError) {
+  authMessage.textContent = text;
+  authMessage.classList.toggle("error", !!isError);
+  authMessage.classList.remove("hidden");
+}
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const registering = mode === "register";
+  authTitle.textContent = registering ? "Register" : "Log In";
+  authSubmit.textContent = registering ? "Create Account" : "Log In";
+  authSwitchText.textContent = registering ? "Already have an account?" : "Don't have an account?";
+  authSwitchBtn.textContent = registering ? "Log In" : "Register";
+  authPassword.autocomplete = registering ? "new-password" : "current-password";
+  authMessage.classList.add("hidden");
+}
+
+function showLoggedIn(user) {
+  authSection.classList.add("hidden");
+  appSection.classList.remove("hidden");
+  userBar.classList.remove("hidden");
+  userEmail.textContent = user.email;
+}
+
+function showLoggedOut() {
+  appSection.classList.add("hidden");
+  userBar.classList.add("hidden");
+  authSection.classList.remove("hidden");
+  userEmail.textContent = "";
+  tasks = [];
+  taskList.innerHTML = "";
+  resetForm();
+  filterSelect.value = "All";
+}
+
+authSwitchBtn.addEventListener("click", () => {
+  setAuthMode(authMode === "login" ? "register" : "login");
+});
+
+authForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const email = authEmail.value.trim();
+  const password = authPassword.value;
+  authSubmit.disabled = true;
+  authMessage.classList.add("hidden");
+
+  if (authMode === "register") {
+    const { data, error } = await db.auth.signUp({ email, password });
+    authSubmit.disabled = false;
+
+    if (error) {
+      showAuthMessage("Could not register: " + error.message, true);
+      return;
+    }
+    // If email confirmation is enabled in Supabase, no session is returned yet.
+    if (!data.session) {
+      setAuthMode("login");
+      showAuthMessage("Account created! Check your email to confirm it, then log in.");
+    }
+  } else {
+    const { error } = await db.auth.signInWithPassword({ email, password });
+    authSubmit.disabled = false;
+
+    if (error) {
+      showAuthMessage("Could not log in: " + error.message, true);
+      return;
+    }
+  }
+
+  authPassword.value = "";
+});
+
+logoutBtn.addEventListener("click", async () => {
+  logoutBtn.disabled = true;
+  const { error } = await db.auth.signOut();
+  logoutBtn.disabled = false;
+  if (error) {
+    console.error(error);
+    alert("Could not log out: " + error.message);
+  }
+});
+
+// Fires on page load (INITIAL_SESSION), login, logout, and token refresh.
+db.auth.onAuthStateChange((event, session) => {
+  const user = session ? session.user : null;
+  const userId = user ? user.id : null;
+
+  if (user) {
+    showLoggedIn(user);
+  } else {
+    showLoggedOut();
+  }
+
+  // Only reload tasks when the signed-in user actually changes (not on token refresh).
+  // setTimeout avoids calling Supabase from inside the auth callback, which can deadlock.
+  if (userId && userId !== currentUserId) {
+    setTimeout(loadTasks, 0);
+  }
+  currentUserId = userId;
+});

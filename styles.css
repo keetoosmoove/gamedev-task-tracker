@@ -102,8 +102,58 @@ button.danger {
   background: #c0392b;
 }
 
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+button.link {
+  padding: 0;
+  background: none;
+  color: #a58cff;
+  text-decoration: underline;
+}
+
 .hidden {
-  display: none;
+  display: none !important;
+}
+
+.user-bar {
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.9rem;
+  color: #b0b3c6;
+  flex-wrap: wrap;
+}
+
+.user-bar button {
+  padding: 4px 12px;
+  font-size: 0.85rem;
+}
+
+#auth-section {
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.auth-message {
+  margin: 12px 0 0;
+  font-size: 0.9rem;
+  color: #7ee2a8;
+}
+
+.auth-message.error {
+  color: #ff6b6b;
+}
+
+.auth-switch {
+  margin: 16px 0 0;
+  font-size: 0.9rem;
+  color: #b0b3c6;
 }
 
 .list-header {
