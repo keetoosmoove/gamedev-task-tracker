@@ -119,4 +119,4 @@ Authentication is handled by **Supabase Authentication** using email and passwor
 
 ## Demo Video
 
-YouTube demo link: [ADD LINK HERE]
+YouTube demo link: [https://youtu.be/ItsqNgfgtUo]
